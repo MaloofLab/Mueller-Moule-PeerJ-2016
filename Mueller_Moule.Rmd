@@ -1,0 +1,504 @@
+---
+title: "Mueller-Moule_Analyses"
+output: 
+  html_document: 
+    keep_md: yes
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,autodep = TRUE, cache = TRUE)
+```
+
+### This Markdown file includes the code to produce the graphs for Mueller-Moule et al, 2016.
+
+```{r libraries, message=FALSE}
+library(ggplot2)
+library(lmerTest)
+library(reshape2)
+library(arm)
+library(scales)
+library(affy)
+library(limma)
+```
+
+# Figure 1
+
+## Figure 1A
+
+```{r Fig1A_data}
+get.excel2 <- function(filename)
+  #function to convert a column based spreadsheet of measurements into a dataframe.
+  #the first column should consist of grouping variable names, corresponding to the contents
+  #of each row.  The first row of data should have a row name of "Data"
+  {
+     vars <- as.character(read.table(file=filename,sep=",",fill=TRUE,blank.lines.skip=FALSE)[,1])
+     data.start <- match("Data", vars)
+     data.table <- read.table(file=filename,sep=",",skip=data.start-1,fill=TRUE)[,-1]
+     last <- ifelse(match("",vars)>data.start,data.start-1,match("",vars)-1) #where is the last grouping variable? 
+     header <- read.table(file=filename, sep=",",fill=TRUE,as.is=TRUE)[1:last,-1]
+     time.frame <- as.data.frame(data.table[,header[1,]=="time"] )#extract the time information
+     colnames(time.frame) <- header[3,header[1,]=="time"]
+     data.table <- data.table[,header[1,]!="time"] #remove time information from data table, leaving hyp info
+     header <- header[,header[1,]!="time"] #remove time information from header
+     data.na <- is.na(data.table)
+     time.table <- time.frame[,match(header[3,],colnames(time.frame))] # expand time.frame so that there is one column per plant
+     tmp.frame <- data.frame(line=col(data.na)[!data.na],
+     						 time=time.table[!data.na],
+     						 y=data.table[!data.na])
+
+      for (i in (1:last))
+       tmp.frame[,vars[i]] <- factor(unlist(header[i,])[tmp.frame$line])
+     return(tmp.frame)
+   }
+
+data <- get.excel2("Fig1A_basic_22507-2.27.07_data.csv")
+
+summary(data)
+
+dr5.mean <- tapply(data$y,list(data$time,data$treatment),mean)
+
+dr5.sem <- tapply(data$y,list(data$time,data$treatment),function(x) sd(x)/sqrt(length(x)))
+```
+
+
+Make plot
+
+```{r Fig1A_plot}
+
+op <- par(mar=par()$mar+.5)
+
+op2 <- options(scipen=-1)
+
+matplot(x=as.numeric(rownames(dr5.mean)),y=cbind(dr5.mean+dr5.sem,dr5.mean-dr5.sem),
+		type="l",lwd=2,lty=3,col=c("black","red"),
+		xlab="time after FR (min)",ylab="DR5:LUC Bioluminescence",
+		main="DR5 response in seedlings",cex.lab=1.5,cex.main=1.5,xlim=c(0,1000),xaxp=c(0,1000,10),ylim=c(1000000,4000000))
+
+matlines(x=as.numeric(rownames(dr5.mean)),y=dr5.mean,lwd=2,lty=1:2,col=c("black","red"))
+
+legend("topright",legend=c("Control","EOD-FR"),lwd=2,lty=1:2,col=c("black","red"))
+```
+
+
+## Figure 1 C and G
+
+Get the data and calculate mean and sem
+
+```{r Fig1CG_data}
+fig1cg.data <- read.csv("FIG1CG_DR5_EOD-FR_3.14-3.16.07.csv")
+
+fig1cg.data$plant <- factor(fig1cg.data$plant)
+
+summary(fig1cg.data)
+
+fig1cg.data <- fig1cg.data[fig1cg.data$time>0,] #initial timepoint light contaminated
+
+dr5.mean <- tapply(fig1cg.data$signal,list(fig1cg.data$time,fig1cg.data$treatment),mean)
+
+dr5.individuals <- tapply(fig1cg.data$plant,list(fig1cg.data$treatment),function(x) nlevels(factor(x)))
+
+dr5.sem <- tapply(fig1cg.data$signal,list(fig1cg.data$time,fig1cg.data$treatment),function(x) sd(x)/sqrt(length(x)))
+```
+
+### Plot figure 1C
+
+```{r plotfig1c}
+op <- par(mar=par()$mar+.5)
+
+ylim=c(0,max(dr5.mean+dr5.sem))
+
+matplot(x=as.numeric(rownames(dr5.mean)),y=cbind(dr5.mean+dr5.sem,dr5.mean-dr5.sem)[,c(3,4,7,8)],type="l",lwd=2,lty=3,col=c("black","red"),
+		xlab="time after FR (min)",ylab="DR5::LUC Bioluminescence",main="DR5 response with NPA",cex.lab=1.5,cex.main=1.5,xlim=c(0,1000),xaxp=c(0,1000,5))#,ylim=ylim)
+
+matlines(x=as.numeric(rownames(dr5.mean)),y=dr5.mean[,c(3,4)],lwd=2,lty=1:2,col=c("black","red"))
+
+legend("topright",legend=c("NPA","NPA + EOD-FR"),lwd=2,lty=1:2,col=c("black","red"))
+```
+
+### plot fig 1G
+
+```{r plotfig1g}
+
+matplot(x=as.numeric(rownames(dr5.mean)),y=cbind(dr5.mean+dr5.sem,dr5.mean-dr5.sem)[,c(1,2,5,6)],
+	type="l",lwd=2,lty=3,col=c("black","red"),
+	xlab="time after FR (min)",ylab="DR5::LUC Bioluminescence",main="DR5 response with DMSO",cex.lab=1.5,cex.main=1.5,xlim=c(0,1000),xaxp=c(0,1000,5))
+
+matlines(x=as.numeric(rownames(dr5.mean)),y=dr5.mean[,c(1,2)],lwd=2,lty=1:2,col=c("black","red"))
+
+legend("topright",legend=c("DMSO","DMSO + EOD-FR"),lwd=2,lty=1:2,col=c("black","red"))
+
+par(op)
+```
+
+# Figure 2 YUCCA Expression
+
+## Figure 2A
+
+### Raw Data Processing
+
+To perform this analysis starting with the rae data, download the cell files from [Array Express](https://www.ebi.ac.uk/arrayexpress/experiments/E-MEXP-443)
+
+```{r}
+data <- ReadAffy(celfile.path="SessaData/")  ## Change to wherever you put the cel files
+
+pData(data)$treat <- rep(c("low_RFR_1h","low_RFR_4d","high_RFR"),2)
+
+pData(data)
+
+data <- rma(data)
+
+##now add the annotation data
+
+affyData <- read.csv("affy_ATH1_array_elements-2010-12-20_small.csv") #read TAIR annotation data from file
+
+names(affyData) <- c("element","is.control","locus","description")#get rid of underlines
+
+genes <- data.frame(element=featureNames(data)) #get affy gene names from dataset
+
+affyMatch <- merge(affyData,genes,by.x="element",by.y=1)# reorder the annotation data to match chip data
+
+```
+
+### Use limma to model and extract gene expression values
+```{r}
+pData(data)$treat <- factor(pData(data)$treat)
+
+design <- model.matrix(~-1+pData(data)$treat)
+
+colnames(design) <- levels(pData(data)$treat)
+
+fit <- lmFit(data,design)
+
+yuccas<- c("AT4G32540","AT5G11320","AT4G13260","AT5G25620","AT1G48910","AT4G28720","AT1G04180","AT5G43890","AT2G33230","AT1G04610","AT1G21430")
+
+yucca.names <- c("YUCCA1","YUCCA4","YUCCA2","YUCCA6","YUCCA10","YUCCA8","YUCCA9","YUCCA5","YUCCA7","YUCCA3","YUCCA11")
+
+#for plotting, want an overall model, without the specific contrast
+plot.fit <- eBayes(fit)
+plot.fit$genes <- affyMatch$locus
+plot.fit <- plot.fit[match(yuccas,plot.fit$genes),]
+plot.fit$genes <- yucca.names
+
+#get the order right
+plot.fit <- plot.fit[match(paste("YUCCA",1:11,sep=""),plot.fit$genes),]
+plot.fit$genes <- paste("YUCCA",1:11,sep="") #not sure why this is needed, but the above line converts to factor
+
+#plot all three time points
+par(mar=c(10, 5, 4, 2) + 0.1)
+matplot(t(plot.fit$coef[,1:3]),type="b",pch=1:dim(plot.fit)[1],lty=1:dim(plot.fit)[1],xlim=c(1,3.5),xaxt="n",ylab="expression (log 2)",cex.axis=1.5,cex.lab=1.5,lwd=2,cex=2,col=1:dim(plot.fit)[1])
+legend("topright",legend=plot.fit$genes,lty=1:dim(plot.fit)[1],pch=1:dim(plot.fit)[1],col=1:dim(plot.fit)[1],lwd=2)
+axis(1,at=1:3,labels=colnames(plot.fit),las=3,cex.axis=1.5)
+```
+
+## Figure 2 B and C
+
+See file "Fig2BC_qPCR.xls"
+
+# Figure 4
+
+## Figure 4 A
+
+```{r}
+Fig4A.data <- read.csv("Fig4A_yuccaHyps031008_paper.csv",row.names=1)
+
+head(Fig4A.data)
+summary(Fig4A.data)
+
+Fig4A.data$gt <- as.character(Fig4A.data$gt)
+
+Fig4A.data$gt[Fig4A.data$gt=="yucQ"] <- "yucca35789"
+Fig4A.data$gt[grep("yucT",Fig4A.data$gt)] <- "yucca589"
+
+Fig4A.data$gt <- factor(Fig4A.data$gt)
+
+summary(Fig4A.data)
+Fig4A.data$plate <- factor(Fig4A.data$plate)
+
+table(Fig4A.data$gt,Fig4A.data$treat)
+
+lmer1 <- lmer(hyp ~ gt*treat + (1|plate),data=Fig4A.data)
+summary(lmer1) #essentially no plate effect
+
+lm1 <- lm(hyp ~ gt*treat,data=Fig4A.data)
+summary(lm1)
+
+pred.df <- data.frame(
+  gt=rep(levels(Fig4A.data$gt),2),
+  treat=rep(levels(Fig4A.data$treat),each=3)
+)
+
+pred.df$mean <- predict(lm1,pred.df)
+
+pred.df$ymin <- pred.df$mean - summary(lm1)$coefficients[,"Std. Error"]
+pred.df$ymax <- pred.df$mean + summary(lm1)$coefficients[,"Std. Error"]
+
+pl.Fig4A <- ggplot(data=pred.df,aes(x=treat,y=mean,ymin=ymin,ymax=ymax,fill=treat))
+pl.Fig4A <- pl.Fig4A + geom_bar(stat="identity")
+pl.Fig4A <- pl.Fig4A + facet_wrap(~ gt, nrow=1)
+pl.Fig4A <- pl.Fig4A + geom_errorbar(width=.3)
+pl.Fig4A <- pl.Fig4A + ylab("Hypocotyl length (mm)")
+pl.Fig4A <- pl.Fig4A + scale_fill_manual(values=c("skyblue","darkred"))
+pl.Fig4A <- pl.Fig4A + theme_bw() + theme(axis.ticks.x = element_blank(), axis.text.x = element_blank(), legend.title = element_blank(),axis.title.x = element_blank())
+pl.Fig4A
+
+summary(lm(hyp ~ treat,data=Fig4A.data[Fig4A.data$gt=="Col",]))
+summary(lm(hyp ~ treat,data=Fig4A.data[Fig4A.data$gt=="yucca35789",]))
+summary(lm(hyp ~ treat,data=Fig4A.data[Fig4A.data$gt=="yucca589",]))
+```
+
+## Fig 4B
+
+```{r Fig4B}
+
+Fig4B.data <- read.csv("Fig4B_yuccaPetioles031408_paper.csv",row.names = 1)
+
+head(Fig4B.data)
+summary(Fig4B.data)
+
+Fig4B.data$petiole <- factor(Fig4B.data$petiole)
+Fig4B.data$plate <- factor(Fig4B.data$plate)
+
+table(Fig4B.data$gt,Fig4B.data$treat)
+
+lmer1 <- lmer(petiole.length ~ gt*treat + (1|plate),data=Fig4B.data)
+summary(lmer1) #no plate effect
+
+lm1 <- lm(petiole.length ~ gt*treat,data=Fig4B.data)
+
+summary(lm1)
+
+pred.df <- data.frame(
+  gt=rep(levels(Fig4B.data$gt),2),
+  treat=rep(levels(Fig4B.data$treat),each=3)
+)
+
+pred.df$mean <- predict(lm1,pred.df)
+
+pred.df$ymin <- pred.df$mean - summary(lm1)$coefficients[,"Std. Error"]
+pred.df$ymax <- pred.df$mean + summary(lm1)$coefficients[,"Std. Error"]
+
+pred.df$treat <- factor(pred.df$treat,levels=c("sd","FR"),labels=c("Control","EOD=FR"))
+
+pl.Fig4B <- ggplot(data=pred.df,aes(x=treat,y=mean,ymin=ymin,ymax=ymax,fill=treat))
+pl.Fig4B <- pl.Fig4B+ geom_bar(stat="identity")
+pl.Fig4B <- pl.Fig4B + facet_wrap(~ gt, nrow=1)
+pl.Fig4B <- pl.Fig4B + geom_errorbar(width=.3)
+pl.Fig4B <- pl.Fig4B + ylab("Petiole length (mm)")
+pl.Fig4B <- pl.Fig4B + scale_fill_manual(values=c("skyblue","darkred"))
+pl.Fig4B <- pl.Fig4B + theme_bw() + theme(axis.ticks.x = element_blank(), axis.text.x = element_blank(), legend.title = element_blank(),axis.title.x = element_blank())
+pl.Fig4B
+
+summary(lm(petiole.length ~ treat,data=Fig4B.data[Fig4B.data$gt=="Col",]))
+summary(lm(petiole.length ~ treat,data=Fig4B.data[Fig4B.data$gt=="yucca35789",]))
+summary(lm(petiole.length ~ treat,data=Fig4B.data[Fig4B.data$gt=="yucca589",]))
+```
+
+## Fig 4C
+
+```{r Fig4C}
+Fig4C.data <- read.csv("Fig4C_EODFR_data_paper.csv")
+
+Fig4C.data$exp <- factor(Fig4C.data$exp)
+
+head(Fig4C.data)
+
+summary(Fig4C.data)
+
+table(Fig4C.data$genotype, Fig4C.data$light)
+
+lmer1 <- lmer(hypocotyl_mm ~ light*genotype + (1|replicate) + (1|exp),data=Fig4C.data)
+summary(lmer1)
+
+lmer2 <- lmer(hypocotyl_mm ~ light*genotype + (1|exp),data=Fig4C.data)
+summary(lmer2)
+anova(lmer1,lmer2)
+anova(lmer2)
+
+pred.df <- data.frame(
+#careful these need to be in the same order as the lmer summary table
+# so that the se.fixef function works
+  genotype=rep(levels(Fig4C.data$genotype),times=nlevels(Fig4C.data$light)),
+  light=rep(levels(Fig4C.data$light),each=nlevels(Fig4C.data$genotype))
+)
+
+pred.df$blup <- predict(lmer2,pred.df,re.form=NA)
+pred.df$se <- se.fixef(lmer2)
+pred.df <- within(pred.df,{
+  ymin <- blup-se
+  ymax <- blup+se
+})
+pred.df
+
+pl.Fig4C<- ggplot(data=pred.df,aes(x=light,y=blup,ymin=ymin,ymax=ymax,fill=light))
+pl.Fig4C<- pl.Fig4C+ geom_bar(stat="identity")
+pl.Fig4C<- pl.Fig4C+ facet_wrap(~ genotype, nrow=1)
+pl.Fig4C<- pl.Fig4C+ geom_errorbar(width=.3)
+pl.Fig4C<- pl.Fig4C+ ylab("Hypotocyl length (mm)")
+pl.Fig4C<- pl.Fig4C+ scale_fill_manual(values=c("skyblue","darkred"))
+pl.Fig4C<- pl.Fig4C+ theme_bw() + theme(axis.ticks.x = element_blank(), axis.title.x = element_blank(), axis.text.x = element_blank(), legend.title = element_blank())
+pl.Fig4C
+
+#get pvalues for each gt separately
+summary(lmer(hypocotyl_mm ~ light + (1|exp),data=Fig4C.data[Fig4C.data$genotype=="Col",]))
+
+summary(lmer(hypocotyl_mm ~ light + (1|exp),data=Fig4C.data[Fig4C.data$genotype=="yuc2589",]))
+```
+
+
+## Fig 4D
+
+### read the data and clean it up
+```{r Fig4Ddata}
+Fig4D.data <- read.csv("Fig4D_auxin_mut_leaf_SAS_data_paper.csv")
+head(Fig4D.data)
+summary(Fig4D.data)
+Fig4D.data$treatment <- relevel(Fig4D.data$treatment,ref="sun")
+Fig4D.data$genotype <- as.character(Fig4D.data$plant)
+Fig4D.data$genotype[Fig4D.data$genotype=="yucQ"] <- "yuc2589"
+Fig4D.data$genotype <- factor(Fig4D.data$genotype)
+Fig4D.data$leaf <- factor(Fig4D.data$leaf)
+summary(Fig4D.data)
+table(Fig4D.data$treatment,Fig4D.data$leaf,Fig4D.data$genotype)
+```
+
+### fit mixed effect models
+```{r Fig4Dlmer}
+lmer1 <- lmer(petioleLength ~ genotype*treatment + (1|set) + (1|leaf),data=Fig4D.data)
+summary(lmer1)
+lmer2 <- lmer(petioleLength ~ genotype*treatment + (1|set),data=Fig4D.data)
+anova(lmer1,lmer2)
+lmer3 <- lmer(petioleLength ~ genotype*treatment + (1|leaf),data=Fig4D.data)
+anova(lmer1,lmer3)
+```
+
+There isn't much reason to keep the random efffects
+
+### fit a normal linear model instead
+```{r Fig4Dlm}
+lm1 <- lm(petioleLength ~ genotype*treatment,data=Fig4D.data)
+summary(lm1)
+```
+
+### Get the predicted means 
+```{r means}
+pred.df <- data.frame(
+  genotype=rep(levels(Fig4D.data$genotype),2),
+  treatment=factor(rep(levels(Fig4D.data$treatment),each=nlevels(Fig4D.data$genotype)),levels=c("sun","shade"))
+)
+
+pred.df$mean <- predict(lm1,pred.df)
+
+pred.df$ymin <- pred.df$mean - summary(lm1)$coefficients[,"Std. Error"]
+pred.df$ymax <- pred.df$mean + summary(lm1)$coefficients[,"Std. Error"]
+```
+
+### plot the fitted data and save for figure
+```{r}
+pl.Fig4D <- ggplot(data=pred.df,aes(x=treatment,y=mean,ymin=ymin,ymax=ymax,fill=treatment))
+pl.Fig4D <- pl.Fig4D + geom_bar(stat="identity")
+pl.Fig4D <- pl.Fig4D + facet_wrap(~ genotype, nrow=1)
+pl.Fig4D <- pl.Fig4D + geom_errorbar(width=.3)
+pl.Fig4D <- pl.Fig4D + ylab("Petiole length (mm)")
+pl.Fig4D <- pl.Fig4D + scale_fill_manual(values=c("red","darkred"))
+pl.Fig4D <- pl.Fig4D + theme_bw() + theme(axis.ticks.x = element_blank(), axis.text.x = element_blank(), legend.title = element_blank(),axis.title.x = element_blank())
+pl.Fig4D
+```
+
+### test individual sun shade response
+```{r sunshade}
+summary(lm(petioleLength ~ treatment,data=Fig4D.data[Fig4D.data$genotype=="Col",]))
+summary(lm(petioleLength ~ treatment,data=Fig4D.data[Fig4D.data$genotype=="yuc2589",]))
+```
+
+## Fig 4E
+
+```{r preliminaries, message=FALSE}
+scientific2 <- function (x, digits = 6, ...) 
+{
+    x <- signif(x, digits)
+    format(x, trim = TRUE, scientific = TRUE, ...)
+}
+```
+
+```{r load data}
+Fig4E.data <- read.csv("Fig4E_remeasure3-20.csv")
+head(Fig4E.data)
+summary(Fig4E.data)
+```
+
+```{r plot}
+pl.Fig4E <- ggplot(Fig4E.data,aes(x=Timepoint,y=Int,color=Treatment))
+pl.Fig4E <- pl.Fig4E + geom_smooth(method="loess")
+pl.Fig4E <- pl.Fig4E + facet_grid(. ~ Genotype)
+pl.Fig4E <- pl.Fig4E + scale_y_continuous(labels = scientific2)
+pl.Fig4E <- pl.Fig4E + scale_color_manual(values=c("darkred","skyblue"),labels=c("EOD-FR","Control"))
+pl.Fig4E <- pl.Fig4E + coord_cartesian(ylim=c(167500000,168500000))
+pl.Fig4E <- pl.Fig4E + xlab("Time after treatment (minutes)")
+pl.Fig4E <- pl.Fig4E + ylab("Luciferase (counts)")
+pl.Fig4E <- pl.Fig4E + theme_bw()
+pl.Fig4E <- pl.Fig4E + theme(legend.title=element_blank())
+pl.Fig4E <- pl.Fig4E + theme(axis.text=element_text(size=8))
+pl.Fig4E
+```
+
+# Figure 5: Hypocotyl shade avoidance of additional lines
+
+Read in data and format
+
+```{r}
+fig5.data <- read.csv("Fig5_yuc_hyp.csv")
+summary(fig5.data)
+
+fig5.data$exp<-as.factor(as.character(fig5.data$exp))
+
+fig5.data$treatment <- relevel(fig5.data$treatment,ref="sun")
+
+fig5.data$genotype <- factor(fig5.data$genotype,levels=c("Col","yuc2","yuc5","yuc8","yuc9","yuc2yuc5yuc9","yuc5yuc8yuc9","yuc2yuc5yuc8yuc9","yuc1yuc4"))
+
+ftable(fig5.data$genotype,fig5.data$treatment)
+```
+
+
+Fit fixed effects model
+
+```{r fig5_model}
+fig5.lmer1 <- lmer(hyp_mm ~ genotype*treatment + (1|rep) + (1|exp),data=fig5.data)
+summary(fig5.lmer1)
+
+fig5.lmer2 <- lmer(hyp_mm ~ genotype*treatment + (1|exp),data=fig5.data)
+summary(fig5.lmer2)
+
+anova(fig5.lmer1,fig5.lmer2) #go with the simpler model
+
+fig5.lmer <- fig5.lmer2
+```
+
+Get model estimates
+
+```{r fig5_estimates}
+fig5.pred.df <- data.frame(
+  genotype=rep(levels(fig5.data$genotype),2),
+  treatment=rep(levels(fig5.data$treatment),each=nlevels(fig5.data$genotype))
+)
+
+fig5.pred.df$hyp_mm <- predict(fig5.lmer,fig5.pred.df,re.form=NA)
+
+fig5.pred.df$se <- summary(fig5.lmer)$coefficients[,"Std. Error"]
+
+fig5.pred.df
+```
+
+Make plot
+
+```{r Fig5plot}
+fig5.pred.df$treatment <- relevel(fig5.pred.df$treatment,ref="sun")
+fig5.pred.df$genotype <- factor(fig5.pred.df$genotype,levels=c("Col","yuc2","yuc5","yuc8","yuc9","yuc2yuc5yuc9","yuc5yuc8yuc9","yuc2yuc5yuc8yuc9","yuc1yuc4"))
+pl.Fig5 <- ggplot(fig5.pred.df,aes(x=treatment,y=hyp_mm,ymin=hyp_mm-se,ymax=hyp_mm+se,fill=treatment))
+pl.Fig5 <- pl.Fig5 + geom_bar(stat="identity")
+pl.Fig5 <- pl.Fig5 + facet_wrap(~ genotype,nrow=1)
+pl.Fig5 <- pl.Fig5 +scale_fill_manual(values=c("red","darkred"))
+pl.Fig5 <- pl.Fig5 + geom_errorbar(width=.5)
+pl.Fig5
+```
+
